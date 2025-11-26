@@ -49,7 +49,7 @@ export default function Home() {
     // Note: No need to call fetchPosts() again! Redux updates the list automatically.
   };
 
-  const handleEdit = (post: any) => {
+  const handleEdit = (post: Post) => {
     setEditingId(post.id);
     setTitle(post.title);
     setContent(post.content);
@@ -147,7 +147,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {posts.map((post: any) => {
+              {posts.map((post: Post) => {
                 const isOwner = user && post.userId === user.id;
 
                 return (
