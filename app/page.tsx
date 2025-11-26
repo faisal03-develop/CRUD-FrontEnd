@@ -2,70 +2,51 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}` 
-    };
-};
+// 1. Import Hooks and Actions
+import { useAppDispatch, useAppSelector } from '../lib/hooks';
+import { fetchPosts, createPost, updatePost, deletePost } from '../lib/features/postSlice';
+import { initializeAuth, logout } from '../lib/features/authSlice';
 
 export default function Home() {
-  const [posts, setPosts] = useState([]);
+  // 2. Local state for form inputs (UI state only)
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [user, setUser] = useState<any>(null);
 
+  // 3. Access Global State (Redux)
+  const dispatch = useAppDispatch();
+  const { posts } = useAppSelector((state) => state.posts);
+  const { user } = useAppSelector((state) => state.auth);
+
+  // 4. Initialize Data on Load
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    fetchPosts();
-  }, []);
-
-  const fetchPosts = () => {
-    fetch('http://localhost:5000/posts')
-      .then(res => res.json())
-      .then(data => setPosts(data));
-  };
+    // Check localStorage to see if user is already logged in
+    dispatch(initializeAuth());
+    // Load the posts from the backend
+    dispatch(fetchPosts());
+  }, [dispatch]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
+    dispatch(logout());
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!user) return alert('You must be logged in to post!'); // Basic guard
-
-    const payload = { title, content };
-    const method = editingId ? 'PUT' : 'POST';
-    const url = editingId 
-      ? `http://localhost:5000/posts/${editingId}`
-      : 'http://localhost:5000/posts';
-
-    // UPDATED: Using getAuthHeaders() for security
-    const res = await fetch(url, {
-      method: method,
-      headers: getAuthHeaders(),
-      // REMOVED: userId is no longer sent in the body
-      body: JSON.stringify(payload), 
-    });
-
-    if (res.status === 403 || res.status === 401) {
-      alert("Access Denied: You cannot modify this post.");
-    }
+    if (!user) return alert('You must be logged in!');
 
     if (editingId) {
+      // Dispatch the Update Thunk
+      await dispatch(updatePost({ id: editingId, title, content })).unwrap();
       setEditingId(null);
+    } else {
+      // Dispatch the Create Thunk
+      await dispatch(createPost({ title, content })).unwrap();
     }
+
+    // Clear inputs
     setTitle('');
     setContent('');
-    fetchPosts();
+    // Note: No need to call fetchPosts() again! Redux updates the list automatically.
   };
 
   const handleEdit = (post: any) => {
@@ -75,21 +56,12 @@ export default function Home() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!user) return alert('You must be logged in to delete!');
-
-    // UPDATED: Using getAuthHeaders() for security
-    const res = await fetch(`http://localhost:5000/posts/${id}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-
-    if (res.status === 403 || res.status === 401) {
-      alert("Access Denied: You cannot delete this post.");
-    }
-    
-    fetchPosts();
+    if (!user) return alert('You must be logged in!');
+    // Dispatch the Delete Thunk
+    await dispatch(deletePost(id));
   };
 
+  // --- VIEW 1: LANDING PAGE (Not Logged In) ---
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
@@ -114,10 +86,12 @@ export default function Home() {
     );
   }
 
+  // --- VIEW 2: DASHBOARD (Logged In) ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 bg-white/50 backdrop-blur-sm p-6 rounded-2xl border border-white/50 shadow-sm">
           <div className="text-center md:text-left">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-1">
@@ -126,10 +100,11 @@ export default function Home() {
             <p className="text-gray-600 font-medium">Welcome back, <span className="text-purple-600">{user.username}</span>! 👋</p>
           </div>
           <button onClick={handleLogout} className="mt-4 md:mt-0 px-6 py-2 bg-red-50 text-red-500 rounded-xl font-medium hover:bg-red-100 transition-colors border border-red-100">
-            Logout 🕸️
+            Logout 🚪
           </button>
         </div>
 
+        {/* Form Card */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
             {editingId ? '✏️ Edit Post' : '➕ Create New Post'}
@@ -158,6 +133,7 @@ export default function Home() {
           </form>
         </div>
         
+        {/* Posts Grid */}
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
             📝 Your Posts ({posts.length})
